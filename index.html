@@ -1,0 +1,298 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Medium RAG Assistant</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --ink: #202124;
+        --muted: #626870;
+        --line: #d8dee4;
+        --panel: #ffffff;
+        --page: #f7f8f5;
+        --accent: #0f766e;
+        --accent-strong: #0b5f59;
+        --warn: #8a4b00;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        background: var(--page);
+        color: var(--ink);
+        font-family: Arial, Helvetica, sans-serif;
+      }
+
+      main {
+        width: min(1120px, calc(100vw - 32px));
+        margin: 0 auto;
+        padding: 32px 0;
+      }
+
+      header {
+        display: flex;
+        align-items: end;
+        justify-content: space-between;
+        gap: 20px;
+        padding-bottom: 18px;
+        border-bottom: 1px solid var(--line);
+      }
+
+      h1 {
+        margin: 0;
+        font-size: 30px;
+        line-height: 1.15;
+        letter-spacing: 0;
+      }
+
+      .stats {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        justify-content: flex-end;
+      }
+
+      .stat {
+        border: 1px solid var(--line);
+        background: var(--panel);
+        border-radius: 6px;
+        padding: 8px 10px;
+        min-width: 96px;
+      }
+
+      .stat span {
+        display: block;
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      .stat strong {
+        display: block;
+        margin-top: 2px;
+        font-size: 15px;
+      }
+
+      .workspace {
+        display: grid;
+        grid-template-columns: minmax(280px, 400px) 1fr;
+        gap: 18px;
+        margin-top: 22px;
+      }
+
+      section {
+        min-width: 0;
+      }
+
+      .panel {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+      }
+
+      .query {
+        padding: 16px;
+      }
+
+      label {
+        display: block;
+        color: var(--muted);
+        font-size: 13px;
+        margin-bottom: 8px;
+      }
+
+      textarea {
+        width: 100%;
+        min-height: 190px;
+        resize: vertical;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        padding: 12px;
+        color: var(--ink);
+        font: inherit;
+        line-height: 1.45;
+      }
+
+      textarea:focus {
+        outline: 2px solid rgba(15, 118, 110, 0.24);
+        border-color: var(--accent);
+      }
+
+      .actions {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-top: 12px;
+      }
+
+      button {
+        border: 0;
+        border-radius: 6px;
+        background: var(--accent);
+        color: white;
+        font: inherit;
+        font-weight: 700;
+        padding: 10px 16px;
+        cursor: pointer;
+      }
+
+      button:disabled {
+        cursor: progress;
+        background: #8aa6a2;
+      }
+
+      .status {
+        color: var(--muted);
+        font-size: 13px;
+      }
+
+      .output {
+        display: grid;
+        gap: 14px;
+      }
+
+      .block {
+        padding: 16px;
+      }
+
+      h2 {
+        margin: 0 0 10px;
+        font-size: 16px;
+        line-height: 1.25;
+        letter-spacing: 0;
+      }
+
+      pre {
+        margin: 0;
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+        color: var(--ink);
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        font-size: 13px;
+        line-height: 1.45;
+      }
+
+      .answer {
+        line-height: 1.55;
+      }
+
+      .empty {
+        color: var(--muted);
+      }
+
+      .error {
+        color: var(--warn);
+      }
+
+      @media (max-width: 800px) {
+        header {
+          align-items: stretch;
+          flex-direction: column;
+        }
+
+        .stats {
+          justify-content: flex-start;
+        }
+
+        .workspace {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <header>
+        <h1>Medium RAG Assistant</h1>
+        <div class="stats" id="stats"></div>
+      </header>
+
+      <div class="workspace">
+        <section class="panel query">
+          <label for="question">Question</label>
+          <textarea id="question">Find an article that reframes marketing as a conversation with readers, aimed at writers who find self-promotion uncomfortable. Provide the title and author.</textarea>
+          <div class="actions">
+            <button id="ask">Ask</button>
+            <span class="status" id="status"></span>
+          </div>
+        </section>
+
+        <section class="output">
+          <div class="panel block">
+            <h2>Response</h2>
+            <div class="answer empty" id="response">No response yet.</div>
+          </div>
+
+          <div class="panel block">
+            <h2>Retrieved Context</h2>
+            <pre class="empty" id="context">[]</pre>
+          </div>
+        </section>
+      </div>
+    </main>
+
+    <script>
+      const statsEl = document.getElementById("stats");
+      const questionEl = document.getElementById("question");
+      const askEl = document.getElementById("ask");
+      const statusEl = document.getElementById("status");
+      const responseEl = document.getElementById("response");
+      const contextEl = document.getElementById("context");
+
+      function renderStats(stats) {
+        statsEl.innerHTML = Object.entries(stats)
+          .map(([key, value]) => `<div class="stat"><span>${key}</span><strong>${value}</strong></div>`)
+          .join("");
+      }
+
+      async function loadStats() {
+        const res = await fetch("/api/stats");
+        renderStats(await res.json());
+      }
+
+      async function ask() {
+        const question = questionEl.value.trim();
+        if (!question) return;
+
+        askEl.disabled = true;
+        statusEl.textContent = "Running";
+        responseEl.textContent = "";
+        responseEl.className = "answer empty";
+        contextEl.textContent = "[]";
+        contextEl.className = "empty";
+
+        try {
+          const res = await fetch("/api/prompt", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ question }),
+          });
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.error || "Request failed");
+
+          responseEl.textContent = data.response || "";
+          responseEl.className = "answer";
+          contextEl.textContent = JSON.stringify(data.context || [], null, 2);
+          contextEl.className = "";
+          statusEl.textContent = "Done";
+        } catch (error) {
+          responseEl.textContent = error.message;
+          responseEl.className = "answer error";
+          statusEl.textContent = "Error";
+        } finally {
+          askEl.disabled = false;
+        }
+      }
+
+      askEl.addEventListener("click", ask);
+      loadStats().catch(() => {
+        statsEl.innerHTML = '<div class="stat"><span>stats</span><strong>offline</strong></div>';
+      });
+    </script>
+  </body>
+</html>
