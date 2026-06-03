@@ -1,0 +1,7 @@
+API.env
+.env
+.git
+*.csv
+*.pdf
+__pycache__
+.pytest_cache
