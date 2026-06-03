@@ -106,21 +106,48 @@ def main():
     parser.add_argument("--batch-size", type=int, default=64)
     parser.add_argument("--cloud", default=os.getenv("PINECONE_CLOUD", "aws"))
     parser.add_argument("--region", default=os.getenv("PINECONE_REGION", "us-east-1"))
+    parser.add_argument(
+        "--reset-namespace",
+        action="store_true",
+        help="Delete all vectors in the namespace before ingesting.",
+    )
+    parser.add_argument(
+        "--count-only",
+        action="store_true",
+        help="Only count chunks that would be ingested; do not call external APIs.",
+    )
     args = parser.parse_args()
+
+    if args.count_only:
+        total_chunks = sum(1 for _ in iter_chunks(Path(args.csv), args.limit))
+        print(
+            f"Would ingest {total_chunks} chunks "
+            f"(chunk_size={CHUNK_SIZE}, overlap_ratio={OVERLAP_RATIO}, namespace={PINECONE_NAMESPACE})"
+        )
+        return
 
     index_name = os.getenv("PINECONE_INDEX_NAME", os.getenv("PINECONE_INDEX"))
     if not index_name:
         raise RuntimeError("Set PINECONE_INDEX_NAME before ingesting.")
 
     index = ensure_index(index_name, args.cloud, args.region)
-    all_chunks = list(iter_chunks(Path(args.csv), args.limit))
-    print(
-        f"Prepared {len(all_chunks)} chunks "
-        f"(chunk_size={CHUNK_SIZE}, overlap_ratio={OVERLAP_RATIO}, namespace={PINECONE_NAMESPACE})"
-    )
+    if args.reset_namespace:
+        print(f"Deleting existing vectors in namespace '{PINECONE_NAMESPACE}'...", flush=True)
+        index.delete(delete_all=True, namespace=PINECONE_NAMESPACE)
+        print("Namespace reset complete.", flush=True)
 
     total = 0
-    for batch in batched(all_chunks, args.batch_size):
+    batch = []
+    print(
+        f"Starting ingestion "
+        f"(chunk_size={CHUNK_SIZE}, overlap_ratio={OVERLAP_RATIO}, namespace={PINECONE_NAMESPACE})",
+        flush=True,
+    )
+    for item in iter_chunks(Path(args.csv), args.limit):
+        batch.append(item)
+        if len(batch) < args.batch_size:
+            continue
+
         embeddings = embed_texts([item["text_for_embedding"] for item in batch])
         vectors = [
             {
@@ -132,9 +159,24 @@ def main():
         ]
         index.upsert(vectors=vectors, namespace=PINECONE_NAMESPACE)
         total += len(vectors)
-        print(f"Upserted {total}/{len(all_chunks)} chunks")
+        print(f"Upserted {total} chunks", flush=True)
+        batch = []
 
-    print("Done.")
+    if batch:
+        embeddings = embed_texts([item["text_for_embedding"] for item in batch])
+        vectors = [
+            {
+                "id": item["id"],
+                "values": embedding,
+                "metadata": item["metadata"],
+            }
+            for item, embedding in zip(batch, embeddings)
+        ]
+        index.upsert(vectors=vectors, namespace=PINECONE_NAMESPACE)
+        total += len(vectors)
+        print(f"Upserted {total} chunks", flush=True)
+
+    print(f"Done. Total chunks upserted: {total}", flush=True)
 
 
 if __name__ == "__main__":

@@ -99,6 +99,18 @@ After the subset works, ingest the full dataset once:
 python3 scripts/ingest.py
 ```
 
+For a clean re-ingestion from the beginning:
+
+```bash
+python3 scripts/ingest.py --reset-namespace
+```
+
+To count expected chunks without API calls:
+
+```bash
+python3 scripts/ingest.py --count-only
+```
+
 Do not re-embed the full corpus for every code change. Change prompts and API code without touching Pinecone unless chunking parameters change.
 
 ## Deployment

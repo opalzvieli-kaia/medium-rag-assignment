@@ -33,6 +33,8 @@ Only after the subset test works:
 python3 scripts/ingest.py
 ```
 
+Current status: completed from a clean namespace reset. Pinecone namespace `medium-articles` contains `22,174` vectors.
+
 ## Vercel
 
 Set these environment variables in Vercel:

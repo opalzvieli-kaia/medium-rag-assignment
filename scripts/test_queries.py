@@ -19,4 +19,7 @@ for question in QUESTIONS:
     print("=" * 80)
     print(question)
     result = answer_question(question)
-    print(json.dumps(result, ensure_ascii=False, indent=2))
+    print(result["response"])
+    print("Context titles:")
+    for item in result["context"]:
+        print(f"- {item['score']:.4f} | {item['title']} | {item['article_id']}")

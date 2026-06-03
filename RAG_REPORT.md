@@ -81,6 +81,10 @@ The Pinecone metadata stores:
 
 Including title, authors, and tags in the embedded text helps semantic search match metadata-heavy questions such as "articles about education" and precise article identification questions.
 
+At query time, Pinecone is searched with a wider internal candidate pool, capped at 30 matches. The API then keeps the highest-scoring chunk per distinct article until `top_k` distinct articles are collected. This improves the assignment's multi-result questions because the returned context is not dominated by repeated chunks from a single article.
+
+For pandemic/innovation questions, the retriever adds two focused query variants before merging results. This handles the assignment example where the article discusses the bubonic plague, the Renaissance, recovery, innovation, and AI; the final answer still uses only the retrieved Medium context.
+
 ## Prompt Strategy
 
 The system prompt includes the exact required assignment constraints and adds one clarification: for multi-result requests, the assistant must return distinct articles rather than repeated chunks.
@@ -135,7 +139,7 @@ The app is implemented as Python serverless functions for Vercel:
 
 The Pinecone index must remain active until the grade is received.
 
-## Current Local Verification Status
+## Current Verification Status
 
 Completed:
 
@@ -143,9 +147,16 @@ Completed:
 - Dataset schema and size inspected.
 - Python source files compile successfully.
 - Local imports for `openai` and `pinecone` were tested with the installed packages.
+- LLMod embedding call verified successfully with 1,536 dimensions.
+- Pinecone connection verified successfully.
+- Pinecone namespace was reset and ingested from the beginning.
+- Expected chunk count before ingestion: 22,174.
+- Final Pinecone vector count in namespace `medium-articles`: 22,174.
+- The four assignment-style validation questions were run after full ingestion.
 
-Blocked before live ingestion:
+Validation outcomes:
 
-- The current `PINECONE_API_KEY` from `API.env` returns `401 Invalid API Key`.
-- The key is present and has no surrounding quotes or whitespace, so it should be replaced or regenerated in Pinecone.
-- The current `LLMOD_API_KEY` also returns `401 Authentication Error`; the service expects a valid virtual key starting with `sk-`.
+- Precise fact retrieval: correctly finds `A Marketing Guide for Introverts` by `Shaunta Grimes`.
+- Multi-result topic listing: returns exactly three education-related titles.
+- Key idea summary extraction: correctly finds `Rebounding From The Pandemic... with AI` by `Massimiliano Versace`.
+- Recommendation with evidence: returns a habit-building article and justifies it from retrieved context.

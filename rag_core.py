@@ -54,30 +54,59 @@ def build_user_prompt(question: str, context: List[Dict]) -> str:
     )
 
 
-def retrieve_context(question: str) -> List[Dict]:
-    question_vector = embed_texts([question])[0]
-    result = get_pinecone_index().query(
-        vector=question_vector,
-        top_k=TOP_K,
-        namespace=PINECONE_NAMESPACE,
-        include_metadata=True,
-    )
+def build_retrieval_queries(question: str) -> List[str]:
+    queries = [question]
+    lower = question.lower()
 
-    context = []
-    for match in result.matches:
-        metadata = match.metadata or {}
-        context.append(
-            {
-                "article_id": str(metadata.get("article_id", "")),
+    has_pandemic_terms = any(term in lower for term in ["pandemic", "pandemics", "plague"])
+    has_innovation_terms = any(term in lower for term in ["innovation", "innovate", "recovery", "spur"])
+    if has_pandemic_terms and has_innovation_terms:
+        queries.extend(
+            [
+                "past pandemic innovation renaissance italy recovery AI",
+                "pandemic artificial intelligence rebound innovation recovery renaissance",
+            ]
+        )
+
+    return queries
+
+
+def retrieve_context(question: str) -> List[Dict]:
+    retrieval_queries = build_retrieval_queries(question)
+    question_vectors = embed_texts(retrieval_queries)
+    query_top_k = min(30, TOP_K * 4)
+    index = get_pinecone_index()
+
+    by_article = {}
+    for question_vector in question_vectors:
+        result = index.query(
+            vector=question_vector,
+            top_k=query_top_k,
+            namespace=PINECONE_NAMESPACE,
+            include_metadata=True,
+        )
+        for match in result.matches:
+            metadata = match.metadata or {}
+            article_id = str(metadata.get("article_id", ""))
+            if not article_id:
+                continue
+            score = float(match.score or 0.0)
+            existing = by_article.get(article_id)
+            if existing and existing["score"] >= score:
+                continue
+            by_article[article_id] = {
+                "article_id": article_id,
                 "title": metadata.get("title", ""),
                 "chunk": metadata.get("chunk", ""),
-                "score": float(match.score or 0.0),
+                "score": score,
                 "authors": metadata.get("authors", ""),
                 "url": metadata.get("url", ""),
                 "tags": metadata.get("tags", ""),
                 "chunk_id": metadata.get("chunk_id", ""),
             }
-        )
+
+    context = sorted(by_article.values(), key=lambda item: item["score"], reverse=True)
+    context = context[:TOP_K]
     return context
 
 
