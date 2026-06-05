@@ -36,6 +36,22 @@ STOPWORDS = {
     "year",
 }
 
+MATERIAL_STOPWORDS = {
+    "about",
+    "article",
+    "argument",
+    "based",
+    "core",
+    "find",
+    "from",
+    "summarize",
+    "summary",
+    "then",
+    "what",
+    "where",
+    "with",
+}
+
 
 def _env(name: str, fallback: str = "") -> str:
     return os.getenv(name, fallback).strip()
@@ -70,9 +86,11 @@ def embed_texts(texts: List[str]) -> List[List[float]]:
 
 def build_user_prompt(question: str, context: List[Dict]) -> str:
     context_text = json.dumps(context, ensure_ascii=False, indent=2)
+    audit = build_material_condition_audit(question, context)
     return (
         "Answer the user question using only the retrieved Medium dataset context below.\n\n"
         f"Question:\n{question}\n\n"
+        f"Material-condition audit:\n{audit}\n\n"
         f"Retrieved context JSON:\n{context_text}"
     )
 
@@ -127,6 +145,37 @@ def lexical_overlap(question: str, metadata: Dict) -> int:
         if len(term) > 3 and term not in STOPWORDS
     }
     return sum(1 for term in terms if term in haystack)
+
+
+def material_terms(question: str) -> List[str]:
+    terms = []
+    for term in re.findall(r"[a-zA-Z0-9]+", question.lower()):
+        if len(term) <= 3 or term in MATERIAL_STOPWORDS or term in terms:
+            continue
+        terms.append(term)
+    return terms[:12]
+
+
+def build_material_condition_audit(question: str, context: List[Dict]) -> str:
+    terms = material_terms(question)
+    if not terms:
+        return "No extracted material terms."
+
+    lines = [f"Extracted material terms: {', '.join(terms)}"]
+    for item in context:
+        haystack = f"{item.get('title', '')} {item.get('chunk', '')}".lower()
+        missing = [term for term in terms if term not in haystack]
+        title = item.get("title", "")
+        if missing:
+            lines.append(f"- {title}: missing terms: {', '.join(missing)}")
+        else:
+            lines.append(f"- {title}: all extracted material terms found")
+    lines.append(
+        "Use this audit conservatively: if no single item supports every material "
+        "condition or a clear equivalent, say the exact requested answer cannot be "
+        "determined from the provided Medium articles data."
+    )
+    return "\n".join(lines)
 
 
 def retrieve_context(question: str) -> List[Dict]:
