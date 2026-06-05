@@ -3,6 +3,7 @@ __pycache__/
 .vercel/
 .env
 API.env
+.DS_Store
 *.csv
 *.pdf
 *.pyc
