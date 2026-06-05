@@ -35,6 +35,8 @@ python3 scripts/ingest.py
 
 Current status: completed from a clean namespace reset. Pinecone namespace `medium-articles` contains `22,174` vectors.
 
+Current RAG stats: `chunk_size=512`, `overlap_ratio=0.2`, `top_k=8`.
+
 ## Vercel
 
 Set these environment variables in Vercel:

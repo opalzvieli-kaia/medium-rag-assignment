@@ -3,7 +3,7 @@ import os
 
 CHUNK_SIZE = int(os.getenv("RAG_CHUNK_SIZE", "512"))
 OVERLAP_RATIO = float(os.getenv("RAG_OVERLAP_RATIO", "0.2"))
-TOP_K = int(os.getenv("RAG_TOP_K", "7"))
+TOP_K = int(os.getenv("RAG_TOP_K", "8"))
 
 EMBEDDING_DIMENSIONS = int(os.getenv("EMBEDDING_DIMENSIONS", "1536"))
 PINECONE_NAMESPACE = os.getenv("PINECONE_NAMESPACE", "medium-articles")

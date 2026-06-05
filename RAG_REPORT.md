@@ -47,7 +47,7 @@ Chosen values:
 {
   "chunk_size": 512,
   "overlap_ratio": 0.2,
-  "top_k": 7
+  "top_k": 8
 }
 ```
 
@@ -55,7 +55,7 @@ Rationale:
 
 - `chunk_size=512`: Medium articles are long enough that full-article embeddings would become semantically blurry. A 512-word chunk keeps passages focused while still preserving paragraph-level context.
 - `overlap_ratio=0.2`: A 20% overlap keeps nearby sentences connected across chunk boundaries without too much duplicate embedding cost.
-- `top_k=7`: The lectures recommend about 3-5 chunks for general text and higher values when broader evidence may be needed. Because the assignment includes multi-result questions and summaries, 7 is a balanced value that usually provides several distinct article candidates without pushing unnecessary context to the chat model.
+- `top_k=8`: The lectures recommend about 3-5 chunks for general text and higher values when broader evidence may be needed. Because the assignment includes multi-result questions and summaries, 8 is a balanced value that provides several distinct article candidates without pushing unnecessary context to the chat model.
 
 The implementation uses whitespace-separated words as an approximate token unit. This is documented in code and keeps the value comfortably under the assignment maximum of 1024.
 
@@ -152,7 +152,7 @@ Completed:
 - Pinecone namespace was reset and ingested from the beginning.
 - Expected chunk count before ingestion: 22,174.
 - Final Pinecone vector count in namespace `medium-articles`: 22,174.
-- The four assignment-style validation questions were run after full ingestion.
+- The four assignment-style validation questions were run after full ingestion with `top_k=8`.
 
 Validation outcomes:
 

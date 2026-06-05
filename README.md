@@ -8,7 +8,7 @@ Chosen RAG parameters:
 
 - `chunk_size`: `512`
 - `overlap_ratio`: `0.2`
-- `top_k`: `7`
+- `top_k`: `8`
 - embedding model: `4UHRUIN-text-embedding-3-small`
 - chat model: `4UHRUIN-gpt-5-mini`
 - embedding dimensions: `1536`
@@ -58,7 +58,7 @@ Output:
 {
   "chunk_size": 512,
   "overlap_ratio": 0.2,
-  "top_k": 7
+  "top_k": 8
 }
 ```
 
