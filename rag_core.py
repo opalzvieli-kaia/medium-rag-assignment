@@ -1,5 +1,6 @@
 import json
 import os
+import re
 from typing import Dict, Iterable, List
 
 from openai import OpenAI
@@ -12,6 +13,28 @@ from rag_config import (
     SYSTEM_PROMPT,
     TOP_K,
 )
+
+
+STOPWORDS = {
+    "about",
+    "article",
+    "based",
+    "find",
+    "from",
+    "global",
+    "list",
+    "points",
+    "provided",
+    "reading",
+    "summarize",
+    "tell",
+    "then",
+    "what",
+    "where",
+    "with",
+    "workers",
+    "year",
+}
 
 
 def _env(name: str, fallback: str = "") -> str:
@@ -54,9 +77,34 @@ def build_user_prompt(question: str, context: List[Dict]) -> str:
     )
 
 
+def extract_requested_titles(question: str) -> List[str]:
+    titles = []
+    quoted_phrases = re.findall(r"""['"]([^'"]{8,})['"]""", question)
+    for phrase in quoted_phrases:
+        phrase = phrase.strip()
+        if phrase and phrase not in titles:
+            titles.append(phrase)
+
+    title_match = re.search(
+        r"find\s+the\s+article\s+(.+?)(?:\s+and\s+|\.|\?|$)",
+        question,
+        flags=re.IGNORECASE,
+    )
+    if title_match:
+        title = title_match.group(1).strip(" '\"")
+        if title and title not in titles:
+            titles.append(title)
+    return titles
+
+
 def build_retrieval_queries(question: str) -> List[str]:
     queries = [question]
     lower = question.lower()
+
+    for title in extract_requested_titles(question):
+        if title not in queries:
+            queries.append(title)
+            queries.append(f"Title: {title}")
 
     has_pandemic_terms = any(term in lower for term in ["pandemic", "pandemics", "plague"])
     has_innovation_terms = any(term in lower for term in ["innovation", "innovate", "recovery", "spur"])
@@ -71,6 +119,16 @@ def build_retrieval_queries(question: str) -> List[str]:
     return queries
 
 
+def lexical_overlap(question: str, metadata: Dict) -> int:
+    haystack = f"{metadata.get('title', '')} {metadata.get('chunk', '')}".lower()
+    terms = {
+        term
+        for term in re.findall(r"[a-zA-Z0-9]+", question.lower())
+        if len(term) > 3 and term not in STOPWORDS
+    }
+    return sum(1 for term in terms if term in haystack)
+
+
 def retrieve_context(question: str) -> List[Dict]:
     retrieval_queries = build_retrieval_queries(question)
     question_vectors = embed_texts(retrieval_queries)
@@ -78,6 +136,30 @@ def retrieve_context(question: str) -> List[Dict]:
     index = get_pinecone_index()
 
     by_article = {}
+
+    def keep_match(match):
+        metadata = match.metadata or {}
+        article_id = str(metadata.get("article_id", ""))
+        if not article_id:
+            return
+        score = float(match.score or 0.0)
+        overlap = lexical_overlap(question, metadata)
+        effective_score = score + min(0.12, overlap * 0.015)
+        existing = by_article.get(article_id)
+        if existing and existing["effective_score"] >= effective_score:
+            return
+        by_article[article_id] = {
+            "article_id": article_id,
+            "title": metadata.get("title", ""),
+            "chunk": metadata.get("chunk", ""),
+            "score": score,
+            "effective_score": effective_score,
+            "authors": metadata.get("authors", ""),
+            "url": metadata.get("url", ""),
+            "tags": metadata.get("tags", ""),
+            "chunk_id": metadata.get("chunk_id", ""),
+        }
+
     for question_vector in question_vectors:
         result = index.query(
             vector=question_vector,
@@ -86,26 +168,20 @@ def retrieve_context(question: str) -> List[Dict]:
             include_metadata=True,
         )
         for match in result.matches:
-            metadata = match.metadata or {}
-            article_id = str(metadata.get("article_id", ""))
-            if not article_id:
-                continue
-            score = float(match.score or 0.0)
-            existing = by_article.get(article_id)
-            if existing and existing["score"] >= score:
-                continue
-            by_article[article_id] = {
-                "article_id": article_id,
-                "title": metadata.get("title", ""),
-                "chunk": metadata.get("chunk", ""),
-                "score": score,
-                "authors": metadata.get("authors", ""),
-                "url": metadata.get("url", ""),
-                "tags": metadata.get("tags", ""),
-                "chunk_id": metadata.get("chunk_id", ""),
-            }
+            keep_match(match)
 
-    context = sorted(by_article.values(), key=lambda item: item["score"], reverse=True)
+    for title in extract_requested_titles(question):
+        result = index.query(
+            vector=question_vectors[0],
+            top_k=min(8, query_top_k),
+            namespace=PINECONE_NAMESPACE,
+            include_metadata=True,
+            filter={"title": {"$eq": title}},
+        )
+        for match in result.matches:
+            keep_match(match)
+
+    context = sorted(by_article.values(), key=lambda item: item["effective_score"], reverse=True)
     context = context[:TOP_K]
     return context
 
