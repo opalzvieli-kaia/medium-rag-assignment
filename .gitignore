@@ -8,3 +8,4 @@ VERCEL_TOKEN.env
 *.csv
 *.pdf
 *.pyc
+.vercel
